@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
 
 app = Flask(__name__)
+app.secret_key = 'lol_keep_anything'  
 
 db_config = {
     'host': 'localhost',
@@ -13,17 +14,6 @@ db_config = {
 
 def get_db_connection():
     return mysql.connector.connect(**db_config)
-
-# def create_tables():
-#     connection = get_db_connection()
-#     cursor = connection.cursor()
-#     with app.open_resource('university_market.sql', mode='r') as f:
-#         cursor.execute(f.read())
-#     connection.commit()
-#     cursor.close()
-#     connection.close()
-
-# create_tables()
 
 @app.route('/')
 def login():
@@ -43,6 +33,7 @@ def login_post():
         user = cursor.fetchone()
         
         if user and check_password_hash(user['password'], password):
+            session['username'] = username
             return render_template('welcome.html')
         else:
             return render_template('login.html', message="Invalid username or password")
@@ -80,6 +71,7 @@ def signup():
             
             connection.commit()
             return redirect(url_for('login'))
+        
         except mysql.connector.Error as err:
             print(f"Error: {err}")
         finally:
@@ -87,6 +79,32 @@ def signup():
             connection.close()
 
     return render_template('signup.html')
+
+@app.route('/profile')
+def profile():
+    try:
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        username = session['username']
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        query = "SELECT mu.name, mu.email, mu.phone_number FROM master_user mu INNER JOIN login l WHERE l.username = %s"
+        cursor.execute(query, (username,))
+        user = cursor.fetchone()
+
+        cursor.close()
+        connection.close()
+        return render_template('profile.html', user=user)
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return render_template('error.html', message="An error occurred while fetching user information.")
+    
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)
